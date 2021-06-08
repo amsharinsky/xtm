@@ -3,8 +3,11 @@ package xlsxToMail
 import (
 	"bytes"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"github.com/tealeg/xlsx"
+	"net/smtp"
+	"strings"
 	"time"
 )
 
@@ -15,7 +18,7 @@ type MailServer struct {
 	Password string
 }
 
-type Mail struct {
+type MailSetting struct {
 	Subject string
 	From    string
 	To      []string
@@ -27,17 +30,16 @@ type ExelFileSetting struct {
 }
 
 type Xtm struct {
-	MailServer
-	Mail
-	ExelFileSetting
+	MailServer       MailServer
+	MailSettings     MailSetting
+	ExelFileSettings ExelFileSetting
 }
 
-func (xtm *Xtm) Init() *Xtm {
-
-	return xtm
+func New() *Xtm {
+	return &Xtm{}
 }
 
-func (xtm *Xtm) GenerateExel(rows sql.Rows) error {
+func (xtm *Xtm) generateExel(rows sql.Rows) error {
 
 	colNames, err := rows.Columns()
 	if err != nil {
@@ -50,7 +52,7 @@ func (xtm *Xtm) GenerateExel(rows sql.Rows) error {
 		pointers[i] = &container[i]
 	}
 	xfile := xlsx.NewFile()
-	xsheet, err := xfile.AddSheet(xtm.ExelFileSetting.Sheet.Name)
+	xsheet, err := xfile.AddSheet(xtm.ExelFileSettings.Sheet.Name)
 	if err != nil {
 		return fmt.Errorf("error adding sheet to xlsx file, %s\n", err)
 	}
@@ -87,19 +89,33 @@ func (xtm *Xtm) GenerateExel(rows sql.Rows) error {
 	}
 	var b bytes.Buffer
 	xfile.Write(&b)
-	//attach := base64.StdEncoding.EncodeToString(b.Bytes())
-	//err = conf.sendMail(attach)
-	//if err != nil {
-	//	logger("fatal", err)
+	attach := base64.StdEncoding.EncodeToString(b.Bytes())
+	err = xtm.sendMail(attach)
+	if err != nil {
+		fmt.Println("dzfds")
 
-	//}
-	//return nil
+	}
+
 	return nil
 }
 
-func (xtm *Xtm) SendExel(rows sql.Rows) {
+func (xtm *Xtm) sendMail(attach string) error {
 
-	err := xtm.GenerateExel(rows)
+	To := strings.Join(xtm.MailSettings.To, ",")
+	Subject := base64.StdEncoding.EncodeToString([]byte(xtm.MailSettings.Subject))
+	message := "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\nContent-Disposition: attachment; charset=" + xtm.MailSettings.Charset + ";filename=reports.xlsx\nContent-Transfer-Encoding: base64\nFrom: " + xtm.MailSettings.From + "\n" + "Subject: =?" + xtm.MailSettings.Charset + "?B?" + Subject + "?=\n" + "To: " + To + "\n\n" + attach
+	auth := smtp.PlainAuth("", xtm.MailSettings.From, xtm.MailServer.Password, xtm.MailServer.Smtp)
+	err := smtp.SendMail(xtm.MailServer.Smtp+":"+xtm.MailServer.Port, auth, xtm.MailSettings.From, xtm.MailSettings.To, []byte(message))
+	if err != nil {
+		return err
+	}
+	return nil
+
+}
+
+func (xtm *Xtm) SendFile(rows sql.Rows) {
+
+	err := xtm.generateExel(rows)
 	if err != nil {
 		fmt.Println(err)
 	}
