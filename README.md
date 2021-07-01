@@ -1,6 +1,6 @@
 # xlsxToMail
 
-sqlQuery := `SELECT * FROM table`
+        sqlQuery := `SELECT * FROM table`
 	rows,_:=conn.Query(sqlQuery)
 	mail:=xlsxToMail.New()
 	mail.MailServer=xlsxToMail.MailServer{
