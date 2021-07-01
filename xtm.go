@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"fmt"
-	"github.com/tealeg/xlsx"
+    "github.com/tealeg/xlsx"
 	"net/smtp"
 	"strings"
 	"time"
+
 )
 
 type MailServer struct {
@@ -26,7 +27,7 @@ type MailSetting struct {
 }
 
 type ExelFileSetting struct {
-	Sheet *xlsx.Sheet
+	SheetName string
 }
 
 type Xtm struct {
@@ -40,8 +41,8 @@ func New() *Xtm {
 }
 
 func (xtm *Xtm) generateExel(rows sql.Rows) error {
-
 	colNames, err := rows.Columns()
+	defer rows.Close()
 	if err != nil {
 		return fmt.Errorf("error fetching column names, %s\n", err)
 	}
@@ -52,7 +53,7 @@ func (xtm *Xtm) generateExel(rows sql.Rows) error {
 		pointers[i] = &container[i]
 	}
 	xfile := xlsx.NewFile()
-	xsheet, err := xfile.AddSheet(xtm.ExelFileSettings.Sheet.Name)
+	xsheet, err := xfile.AddSheet(xtm.ExelFileSettings.SheetName)
 	if err != nil {
 		return fmt.Errorf("error adding sheet to xlsx file, %s\n", err)
 	}
@@ -87,12 +88,12 @@ func (xtm *Xtm) generateExel(rows sql.Rows) error {
 		}
 
 	}
-	var b bytes.Buffer
+    var b bytes.Buffer
 	xfile.Write(&b)
 	attach := base64.StdEncoding.EncodeToString(b.Bytes())
 	err = xtm.sendMail(attach)
 	if err != nil {
-		fmt.Println("dzfds")
+		return err
 
 	}
 
@@ -101,12 +102,13 @@ func (xtm *Xtm) generateExel(rows sql.Rows) error {
 
 func (xtm *Xtm) sendMail(attach string) error {
 
+
 	To := strings.Join(xtm.MailSettings.To, ",")
 	Subject := base64.StdEncoding.EncodeToString([]byte(xtm.MailSettings.Subject))
 	message := "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\nContent-Disposition: attachment; charset=" + xtm.MailSettings.Charset + ";filename=reports.xlsx\nContent-Transfer-Encoding: base64\nFrom: " + xtm.MailSettings.From + "\n" + "Subject: =?" + xtm.MailSettings.Charset + "?B?" + Subject + "?=\n" + "To: " + To + "\n\n" + attach
 	auth := smtp.PlainAuth("", xtm.MailSettings.From, xtm.MailServer.Password, xtm.MailServer.Smtp)
-	err := smtp.SendMail(xtm.MailServer.Smtp+":"+xtm.MailServer.Port, auth, xtm.MailSettings.From, xtm.MailSettings.To, []byte(message))
-	if err != nil {
+    err:= smtp.SendMail(xtm.MailServer.Smtp+":"+xtm.MailServer.Port, auth, xtm.MailSettings.From, xtm.MailSettings.To, []byte(message))
+	if err != nil{
 		return err
 	}
 	return nil
